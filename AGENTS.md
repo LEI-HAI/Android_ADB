@@ -259,4 +259,19 @@ play_pause_y_ratio = py / height
 - `config.json` 是**被跟踪**的默认配置。改键位调参会产生 diff：要么一起提交，要么 `git stash` 暂存
 - `logs/` 整个目录不跟踪，程序启动时自己创建
 - 提交前至少跑一遍 §12 的 1、2 步（compileall + unittest），提交信息用中文、一句话说清"改了什么、为什么"
-- 目前**没有配置远端**。要备份就自己加：`git remote add origin <url>` 然后 `git push -u origin main`
+
+### 13.1 远端与网络（本机特有，别踩）
+
+- 远端：`origin` = `https://github.com/LEI-HAI/Android_ADB.git`，`main` 已跟踪 `origin/main`
+- **本机直连 GitHub 不通**：`curl https://github.com` 与 `ssh -T git@github.com` 都是超时（20 秒 0 字节）。
+  必须先过一个本地代理，系统代理是 `127.0.0.1:7897`（Clash 类工具；注册表 `ProxyEnable=1` 可查）
+- 本仓库已写死 `http.proxy=http://127.0.0.1:7897`。代理软件换端口时：
+
+  ~~~bat
+  "E:\elsedownload\Git\cmd\git.exe" config http.proxy "http://127.0.0.1:新端口"
+  "E:\elsedownload\Git\cmd\git.exe" config --unset http.proxy   :: 不需要代理时
+  ~~~
+
+- 凭据：Git Credential Manager 已存 GitHub 账号（系统配置 `credential.helper=manager`），push 不需要输密码。
+  在无交互环境跑 git 时加 `GIT_TERMINAL_PROMPT=0`，免得卡在提示符上
+- 推送：`git push`（首次是 `git push -u origin main`）。推完用 `git ls-remote origin` 核对远端 HEAD
