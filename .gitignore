@@ -10,6 +10,7 @@ env/
 .ruff_cache/
 .coverage
 htmlcov/
+.env
 
 # ---- 运行产物 ----
 logs/
