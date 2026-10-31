@@ -20,6 +20,7 @@ from .adb_client import AdbClient, AdbError
 from .backends.base import BackendError
 from .config import Config
 from .media_state import PlaybackState, parse_media_session, pick_state
+from .profiles import ProfileStore, profile_key
 
 log = logging.getLogger(__name__)
 
@@ -94,10 +95,18 @@ class SwipeRewinder(Rewinder):
     _MS_PER_PX_RANGE = (2.0, 400.0)  # 换算比例的合理区间
     _CORRECT_THRESHOLD_MS = 400      # 误差超过 0.4 秒才补一刀
 
-    def __init__(self, client: AdbClient, config: Config, logger: Optional[logging.Logger] = None):
+    def __init__(
+        self,
+        client: AdbClient,
+        config: Config,
+        logger: Optional[logging.Logger] = None,
+        store: Optional[ProfileStore] = None,
+    ):
         self._client = client
         self._cfg = config
         self._log = logger or log
+        self._store = store
+        self._profile_key: Optional[str] = None   # 已套用档案的键（避免反复落盘/覆盖）
         self._ms_per_px = float(config.swipe_ms_per_px)
         self._size: Optional[Tuple[int, int]] = None
         self._rotation = 0
@@ -119,6 +128,7 @@ class SwipeRewinder(Rewinder):
         width, height = self._display()
 
         before = self._read_state()
+        self._apply_profile_ratio()
         px = self._px_for(target_ms, width)
         self._swipe(width, height, px, forward=False)
 
@@ -173,6 +183,37 @@ class SwipeRewinder(Rewinder):
             "校准：本次 %.0fpx -> %.2f 秒，ms/px %.1f -> %.1f",
             px, moved_ms / 1000.0, old, self._ms_per_px,
         )
+        self._save_profile_ratio()
+
+    # ------------------------------------------------------------------
+    def _apply_profile_ratio(self) -> None:
+        """首次拿到 包名 + 分辨率 + 方向 时，套用档案里实测过的换算比例。
+
+        这样换手机后第一次后退就能按目标秒数滑，不必重新摸索（标定命令也会写这里）。
+        """
+        if self._store is None or not self._package:
+            return
+        width, height = self._size or (0, 0)
+        if width <= 0 or height <= 0:
+            return
+        key = profile_key(self._package, width, height, self._rotation)
+        if key == self._profile_key:
+            return
+        self._profile_key = key
+        value = self._store.ms_per_px(key)
+        if value is None:
+            return
+        self._ms_per_px = max(self._MS_PER_PX_RANGE[0], min(self._MS_PER_PX_RANGE[1], value))
+        self._log.debug("套用标定档案 %s：%.1f ms/px", key, self._ms_per_px)
+
+    def _save_profile_ratio(self) -> None:
+        if self._store is None or not self._profile_key:
+            return
+        try:
+            if self._store.set_ms_per_px(self._profile_key, self._ms_per_px, source="auto"):
+                self._log.debug("已记录换算比例 %s -> %.1f ms/px", self._profile_key, self._ms_per_px)
+        except Exception as exc:  # noqa: BLE001 - 记不下来不影响后退
+            self._log.debug("写入标定档案失败：%s", exc)
 
     def _px_for(self, duration_ms: int, width: int) -> int:
         px = int(round(duration_ms / max(self._ms_per_px, 0.1)))
@@ -243,8 +284,9 @@ def make_rewinder(
     client: AdbClient,
     config: Config,
     logger: Optional[logging.Logger] = None,
+    store: Optional[ProfileStore] = None,
 ) -> Rewinder:
     """按配置选择后退实现。"""
     if str(config.rewind_mode or "swipe").strip().lower() == "media_key":
         return KeyeventRewinder(client, config, logger)
-    return SwipeRewinder(client, config, logger)
+    return SwipeRewinder(client, config, logger, store=store)

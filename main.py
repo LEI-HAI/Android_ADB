@@ -10,6 +10,7 @@
     python main.py --send-key 224   发送单个按键（调试用）
     python main.py --test play      测试一次播放/暂停
     python main.py --test rewind    测试一次后退
+    python main.py --calibrate      自动标定按钮位置与滑动比例
     python main.py --monitor        打印所有鼠标/键盘事件（排查侧键失效）
     python main.py --duration 5     监听 5 秒后自动退出（调试用）
 
@@ -43,11 +44,13 @@ from android_adb.backends.adb_backend import AdbMediaBackend
 from android_adb.backends.base import BackendError, MediaBackend
 from android_adb.backends.dry_run import DryRunBackend
 from android_adb.backends.scrcpy_backend import ScrcpyMediaBackend
+from android_adb.calibrate import Calibrator
 from android_adb.config import Config, ConfigError
 from android_adb.controller import Action, MediaController
 from android_adb.hotkeys import ExitHotkey
 from android_adb.logger import setup_logging
 from android_adb.media_state import media_button_session, parse_media_session, pick_state
+from android_adb.profiles import ProfileStore
 from android_adb.mouse_listener import (
     ActionDispatcher,
     HookSupervisor,
@@ -268,6 +271,13 @@ def cmd_doctor(cfg: Config) -> int:
             else ""
         )
     )
+    if cfg.profiles_file:
+        store = ProfileStore(cfg.profiles_file)
+        keys = store.keys()
+        print(
+            f"标定档案：{store.path}"
+            + (f"（{len(keys)} 条：{', '.join(keys[:3])}）" if keys else "（暂无记录，跑 --calibrate 生成）")
+        )
     if sys.version_info < (3, 9):
         ok = False
         print("[!!] 需要 Python 3.9 及以上版本")
@@ -332,6 +342,39 @@ def cmd_test(cfg: Config, which: str) -> int:
         time.sleep(0.6)
     if which in ("play", "all"):
         controller.handle(Action.PLAY_PAUSE)
+    return 0
+
+
+def cmd_calibrate(cfg: Config) -> int:
+    """自动标定：找到点得动的播放按钮，并实测后退的滑动换算比例。"""
+    print("\n=== 标定（请先在手机上把视频停在全屏播放页面）===")
+    backend = build_backend(cfg)
+    if not isinstance(backend, AdbMediaBackend):
+        print("[!!] 标定只支持 adb 后端")
+        return 1
+    calibrator = Calibrator(backend.client, cfg)
+    try:
+        result = calibrator.run()
+    finally:
+        backend.close()
+
+    point = result.get("point")
+    print()
+    if point is None:
+        print("[!!] 没找到能切换播放/暂停的位置（已试过界面节点和网格点击）")
+        print("     确认手机停在播放页面、屏幕没有锁，然后重试；仍失败请手动改 config.json 的比例坐标")
+        return 1
+    x, y, source = point
+    print(f"[OK] 播放/暂停按钮：绝对坐标 ({x}, {y})，来源={source}")
+
+    ratio = result.get("ms_per_px")
+    if ratio is None:
+        print("[--] 后退比例未测出（位置信息读不到或滑动没生效），仍沿用配置里的值")
+    else:
+        px = int(round(cfg.swipe_seconds * 1000 / ratio))
+        print(f"[OK] 后退换算：{ratio:.2f} ms/px（后退 {cfg.swipe_seconds:g} 秒约滑 {px} 像素）")
+    print(f"结果已写入：{cfg.profiles_file or 'profiles.json'}（键 {result.get('key')}）")
+    print("以后换手机 / 换 App，跑一次本命令即可")
     return 0
 
 
@@ -493,6 +536,7 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     parser.add_argument("--doctor", action="store_true", help="环境自检后退出")
     parser.add_argument("--send-key", type=str, default=None, metavar="KEYCODE", help="发送单个按键后退出，如 85 或 KEYCODE_MEDIA_PLAY_PAUSE")
     parser.add_argument("--test", choices=("play", "rewind", "all"), nargs="?", const="play", default=None, help="测试一次动作后退出")
+    parser.add_argument("--calibrate", action="store_true", help="自动标定播放按钮位置与后退滑动比例（写入 profiles.json）")
     parser.add_argument("--monitor", action="store_true", help="监视并打印所有鼠标/键盘事件（排查侧键失效）")
     parser.add_argument("--duration", type=float, default=None, metavar="SECONDS", help="监听指定秒数后自动退出（调试用）")
     parser.add_argument("--verbose", action="store_true", help="输出调试日志")
@@ -542,7 +586,14 @@ def _run(argv: Optional[List[str]] = None) -> int:
     if log_path is not None:
         log.debug("日志文件：%s", log_path)
 
-    if not (args.doctor or args.list_devices or args.send_key or args.test or args.monitor):
+    if not (
+        args.doctor
+        or args.list_devices
+        or args.send_key
+        or args.test
+        or args.monitor
+        or args.calibrate
+    ):
         _prepare_console()
         print(_BANNER.format(version=__version__, seconds=cfg.swipe_seconds))
         if log_path is not None:
@@ -559,6 +610,8 @@ def _run(argv: Optional[List[str]] = None) -> int:
             return cmd_send_key(cfg, args.send_key)
         if args.test:
             return cmd_test(cfg, args.test)
+        if args.calibrate:
+            return cmd_calibrate(cfg)
         if args.monitor:
             return cmd_monitor(cfg, duration=args.duration)
         return run_listener(cfg, duration=args.duration)

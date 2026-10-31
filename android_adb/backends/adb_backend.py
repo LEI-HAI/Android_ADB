@@ -17,6 +17,7 @@ from ..adb_client import AdbClient, AdbError
 from ..media_state import parse_media_session, pick_state
 from ..config import Config
 from ..play_pause import PlayPauser, make_play_pauser
+from ..profiles import ProfileStore
 from ..rewind import Rewinder, make_rewinder
 from .base import MediaBackend
 
@@ -30,8 +31,21 @@ class AdbMediaBackend(MediaBackend):
         self._client = client
         self._cfg = config
         self._log = logger or log
-        self._rewinder: Rewinder = make_rewinder(client, config, self._log)
-        self._play_pauser: PlayPauser = make_play_pauser(client, config, self._log)
+        # 标定档案：按 包名 + 分辨率 + 方向 记住点准过的坐标与滑动换算比例
+        self._store = (
+            ProfileStore(config.profiles_file, self._log) if config.profiles_file else None
+        )
+        self._rewinder: Rewinder = make_rewinder(
+            client, config, self._log, store=self._store
+        )
+        self._play_pauser: PlayPauser = make_play_pauser(
+            client, config, self._log, store=self._store
+        )
+
+    @property
+    def client(self) -> AdbClient:
+        """底层 adb 客户端（标定命令要直接读屏幕、发滑动）。"""
+        return self._client
 
     def describe(self) -> str:
         return (

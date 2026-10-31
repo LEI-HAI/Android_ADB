@@ -16,6 +16,8 @@ htmlcov/
 logs/
 *.log
 crash.log
+# 标定档案（--calibrate / 运行中自动生成，和具体手机绑定，不入库）
+profiles.json
 
 # ---- 临时文件 / 调试截图（用完即删，别提交）----
 /*.png

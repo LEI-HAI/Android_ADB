@@ -15,6 +15,8 @@ Android 里一段会话大致长这样：
           state=PlaybackState {state=3, position=102310, buffered position=0,
                                speed=1.0, updated=410264938, actions=823, ...}
 
+较新的系统（Android 14+）会写成 `state=PLAYING(3)` 这种带枚举名的形式，两种都要认。
+
 注意：没有在播放的会话（例如 telecom 的媒体按钮会话）可能没有 state 行。
 """
 from __future__ import annotations
@@ -32,8 +34,28 @@ STATE_PLAYING = 3
 _STATE_LINE_RE = re.compile(r"state=PlaybackState {")
 _PACKAGE_RE = re.compile(r"^\s*package=(\S+)\s*$")
 _ACTIVE_RE = re.compile(r"^\s*active=(true|false)\s*$")
+
+#: Android 13 及以前的写法是纯数字（state=2），Android 14+ 变成了
+#: 带枚举名的形式（state=PAUSED(2)）。两种都要认，否则新系统上永远解析出 0。
+_STATE_VALUE_RES = (
+    re.compile(r"\{state=([A-Z_]+)\((-?\d+)\)"),
+    re.compile(r"\{state=(-?\d+)"),
+)
+#: 枚举名 -> 数值（跟 android.media.session.PlaybackState 一致），只在解析失败时兜底
+_STATE_NAMES = {
+    "NONE": STATE_NONE,
+    "STOPPED": STATE_STOPPED,
+    "PAUSED": STATE_PAUSED,
+    "PLAYING": STATE_PLAYING,
+    "FAST_FORWARDING": 4,
+    "REWINDING": 5,
+    "BUFFERING": 6,
+    "ERROR": 7,
+    "CONNECTING": 8,
+}
+
 _FIELD_RES = {
-    "state": re.compile(r"\bstate=(-?\d+)"),
+    "position": re.compile(r"\bposition=(-?\d+)"),
     "position": re.compile(r"\bposition=(-?\d+)"),
     "speed": re.compile(r"\bspeed=(-?[\d.]+)"),
     "updated": re.compile(r"\bupdated=(\d+)"),
@@ -92,6 +114,24 @@ class PlaybackState:
         return int((other.position_ms - self.position_ms) - gap * speed)
 
 
+def _parse_state_value(line: str) -> int:
+    """取出 PlaybackState 的 state 数值，兼容 "state=2" 与 "state=PAUSED(2)" 两种写法。"""
+    match = _STATE_VALUE_RES[0].search(line)
+    if match:
+        try:
+            return int(match.group(2))
+        except (TypeError, ValueError):
+            name = match.group(1)
+            return _STATE_NAMES.get(name, STATE_NONE)
+    match = _STATE_VALUE_RES[1].search(line)
+    if match:
+        try:
+            return int(match.group(1))
+        except (TypeError, ValueError):
+            return STATE_NONE
+    return STATE_NONE
+
+
 def _parse_state_line(line: str) -> Optional[dict]:
     fields = {}
     for name, regex in _FIELD_RES.items():
@@ -102,7 +142,7 @@ def _parse_state_line(line: str) -> Optional[dict]:
         return None
     try:
         return {
-            "state": int(fields.get("state", STATE_NONE)),
+            "state": _parse_state_value(line),
             "position_ms": int(fields["position"]),
             "speed": float(fields.get("speed", 0.0) or 0.0),
             "updated_ms": int(fields.get("updated", 0) or 0),

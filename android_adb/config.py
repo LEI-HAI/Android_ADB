@@ -13,7 +13,7 @@ import logging
 import os
 from dataclasses import asdict, dataclass, fields
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DEFAULT_CONFIG_PATH = BASE_DIR / "config.json"
@@ -84,6 +84,16 @@ class Config:
     play_pause_y_ratio: float = 0.904         # 同上，y 占屏幕高度的比例
     play_pause_verify_ms: int = 400           # 发完媒体键后等多久再读播放状态确认
     play_pause_tap_settle_ms: int = 350       # 点完按钮后等多久再读播放状态确认
+
+    # ---------- 跨设备 / 跨 App 的适配 ----------
+    # 不同播放器认的媒体键不一样：有的只认 85，有的认 79（耳机键）/126/127。
+    # 主键没反应时按这里的顺序继续试；null 或 [] 表示只发主键（旧行为）。
+    play_pause_extra_keycodes: Optional[List[int]] = None
+    # 点不到按钮时，用 uiautomator dump 找"播放/暂停"节点的真实坐标。
+    # B 站这类自绘控件找不到会自动跳过，不影响其它策略。
+    ui_probe: bool = True
+    # 标定缓存：按 包名 + 分辨率 + 方向 记住点准过的坐标和实测的滑动换算比例
+    profiles_file: Optional[str] = "profiles.json"
 
     # ---------- 鼠标 ----------
     rewind_button: str = "x1"                 # 鼠标侧键1（后退键）
@@ -209,6 +219,15 @@ class Config:
         self.play_pause_tap_settle_ms = min(5000, max(0, int(self.play_pause_tap_settle_ms)))
         self.auto_calibrate = bool(self.auto_calibrate)
 
+        self.ui_probe = bool(self.ui_probe)
+        self.play_pause_extra_keycodes = self._parse_keycodes(
+            "play_pause_extra_keycodes", self.play_pause_extra_keycodes
+        )
+        if self.profiles_file in (None, ""):
+            self.profiles_file = None
+        else:
+            self.profiles_file = str(self.profiles_file).strip() or None
+
         self.debounce_ms = max(0, int(self.debounce_ms))
         self.rewind_interval_ms = max(0, int(self.rewind_interval_ms))
         self.rewind_repeat = max(1, int(self.rewind_repeat))
@@ -266,6 +285,39 @@ class Config:
             self.heartbeat_seconds = max(0, int(self.heartbeat_seconds))
         except (TypeError, ValueError):
             raise ConfigError(f"heartbeat_seconds 必须是整数，当前为 {self.heartbeat_seconds!r}") from None
+
+    def extra_keycodes(self) -> List[int]:
+        """主键之外还要依次尝试的媒体键码；没配置时给一组常见备选。"""
+        value = self.play_pause_extra_keycodes
+        if value is None:
+            return [79, 126, 127]     # HEADSETHOOK / MEDIA_PLAY / MEDIA_PAUSE
+        return list(value)
+
+    @staticmethod
+    def _parse_keycodes(name: str, value: Any) -> Optional[List[int]]:
+        """把 "79,126" / [79, 126] / 79 统一成整数列表；null 原样返回。"""
+        if value is None:
+            return None
+        if isinstance(value, bool):
+            raise ConfigError(f"配置项 {name} 必须是键码列表，当前为 {value!r}")
+        if isinstance(value, int):
+            items: List[Any] = [value]
+        elif isinstance(value, (list, tuple)):
+            items = list(value)
+        else:
+            items = str(value).replace("，", ",").split(",")
+        codes: List[int] = []
+        for item in items:
+            text = str(item).strip()
+            if not text:
+                continue
+            try:
+                codes.append(int(text))
+            except (TypeError, ValueError):
+                raise ConfigError(
+                    f"配置项 {name} 里的 {text!r} 不是整数键码"
+                ) from None
+        return codes
 
     @staticmethod
     def _to_int(name: str, value: Any) -> int:

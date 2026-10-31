@@ -367,9 +367,28 @@ class AdbClient:
         return int(match.group(1)), int(match.group(2))
 
     def rotation(self) -> int:
-        """当前屏幕旋转：0/1/2/3（1 = 顺时针 90 度，即横屏）。"""
+        """当前屏幕旋转：0/1/2/3（1 = 顺时针 90 度，即横屏）。
+
+        取值来源按新到旧依次尝试（不同 Android 版本字段不一样）：
+
+        1. `dumpsys input` 里 `Viewport INTERNAL: ... orientation=1`（Android 14+）
+        2. `dumpsys input` 里 `SurfaceOrientation: 1`（老版本，Android 13 及以前）
+        3. `dumpsys display` 里 `mCurrentOrientation=1`（兜底）
+
+        都读不到才返回 0。Android 16 上 `SurfaceOrientation` 已经没有了，
+        只按老字段解析会让横屏被当成竖屏，点击坐标全错。
+        """
         out = self.shell("dumpsys", "input")
         match = re.search(r"SurfaceOrientation:\s*(\d)", out)
+        if not match:
+            match = re.search(r"Viewport[^\n]*?orientation=(\d)", out)
+        if not match:
+            try:
+                match = re.search(
+                    r"mCurrentOrientation=(\d)", self.shell("dumpsys", "display")
+                )
+            except AdbError:
+                match = None
         return int(match.group(1)) % 4 if match else 0
 
     def display_size(self) -> Tuple[int, int]:

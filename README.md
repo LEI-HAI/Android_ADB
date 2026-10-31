@@ -5,15 +5,21 @@
 - **侧键1（后退键）-> 后退 5 秒**
 - **侧键2（前进键）-> 播放 / 暂停**
 
-不装手机端 App，只用 ADB：播放 / 暂停优先走媒体按键 `keyevent 85`，一旦系统当前没人接收媒体键（App 退到
-后台或被别的播放器抢走），自动改成点击画面上的播放 / 暂停按钮；后退走「横滑手势 + 读取播放位置闭环校准」，
-因为 B 站等客户端的 MediaSession 根本不响应 `keyevent 89`（实测无效，见下文「为什么不用 keyevent 89」）。
+不装手机端 App，只用 ADB：播放 / 暂停优先走媒体按键 `keyevent 85`（不行再自动试 79 / 126 / 127），
+一旦系统当前没人接收媒体键（App 退到后台或被别的播放器抢走），自动改成点击画面上的播放 / 暂停按钮；
+后退走「横滑手势 + 读取播放位置闭环校准」，因为 B 站等客户端的 MediaSession 根本不响应 `keyevent 89`
+（实测无效，见下文「为什么不用 keyevent 89」）。
+
+**换手机、换视频 App** 不用改代码：跑一次 `python main.py --calibrate`，程序会自己找到点得动的播放按钮、
+测出滑动的换算比例，按「包名 + 分辨率 + 方向」记进 `profiles.json`，以后直接用。
 
 ## 功能一览
 
 - 全局监听鼠标侧键：焦点在任何窗口（浏览器、IDE、全屏游戏）都能触发
 - 侧键1 -> 后退 5 秒：滑动屏幕左侧，读播放位置算实际退了几秒，误差大自动补一刀
-- 侧键2 -> 播放 / 暂停：先发 `keyevent 85`，媒体键没人接收时自动点画面按钮（读了状态再决定，不盲点）
+- 侧键2 -> 播放 / 暂停：先发 `keyevent 85`，不行再依次试 79 / 126 / 127，全都无效才点画面按钮（读了状态再决定，不盲点）
+- 换手机 / 换 App 免改代码：`--calibrate` 自动找按钮、自动测滑动比例，结果存 `profiles.json`（按包名 + 分辨率 + 方向隔离）
+- 按钮位置多来源兜底：标定档案 -> config.json 比例 -> 无障碍节点（uiautomator）探测
 - 350ms 防抖：手抖、长按不会连续误发
 - 指令串行执行：adb 有几十一百毫秒延迟，用队列排队，不卡监听、不丢动作
 - 启动自动查找 adb、自动检测设备，未连接 / 未授权 / 多设备都有明确提示
@@ -29,6 +35,7 @@
 Android_ADB/
 ├─ main.py                      # 入口：命令行、设备连接、生命周期
 ├─ config.json                  # 配置（键位、后退方式、秒数、快捷键）
+├─ profiles.json                # 标定档案（--calibrate 生成，与具体手机绑定，已 gitignore）
 ├─ requirements.txt
 ├─ start.bat                    # Windows 一键启动（自动找 Python、缺依赖自动装）
 ├─ README.md
@@ -37,8 +44,11 @@ Android_ADB/
 │  ├─ logger.py                 # 日志格式（控制台 + 滚动日志文件）
 │  ├─ adb_client.py             # 找 adb、检测设备、keyevent / swipe / dumpsys
 │  ├─ media_state.py            # 解析 dumpsys media_session（播放状态、位置、媒体按钮会话）
-│  ├─ play_pause.py             # 播放/暂停策略：媒体键 / 点击按钮 / 自动兜底（默认）
-│  ├─ rewind.py                 # 后退策略：滑动（默认）/ 媒体键（备选）
+│  ├─ play_pause.py             # 播放/暂停策略：媒体键阶梯 / 点击按钮 / 自动兜底（默认）
+│  ├─ rewind.py                 # 后退策略：滑动（默认）/ 媒体键（备选），比例可存档复用
+│  ├─ calibrate.py              # --calibrate：自动找播放按钮 + 实测滑动换算比例
+│  ├─ profiles.py               # 标定档案 profiles.json 的读写（包名 + 分辨率 + 方向）
+│  ├─ ui_probe.py               # uiautomator dump 解析，找播放按钮 / 进度条节点
 │  ├─ controller.py             # 动作编排（鼠标动作 -> 后端调用）
 │  ├─ mouse_listener.py         # 鼠标监听、键盘备用绑定、防抖、异步队列、输入监视、钩子看门狗
 │  ├─ hotkeys.py                # 退出快捷键、组合键解析
@@ -87,12 +97,15 @@ python main.py --doctor
 === 环境自检 ===
 Python：3.13.5（C:\...\python.exe）
 后退方式：swipe（目标 5 秒，31 ms/px）
+播放/暂停方式：auto（点击位置比例 0.039 / 0.904）
+标定档案：E:\Server\Android_ADB\profiles.json（1 条：tv.danmaku.bili|2800x1272|r1）
 [OK] pynput 已安装
 [OK] adb：C:\Users\...\platform-tools\adb.EXE
 [OK] adb 版本：Android Debug Bridge version 1.0.41
-[OK] 设备 5889912f 状态=device 型号=V1936AL
-[OK] 屏幕：2340x1080（rotation=1）
-[OK] 媒体会话：tv.danmaku.bili（已暂停，position=333.2s）
+[OK] 设备 3B661W00NQY00000 状态=device 型号=PLR110
+[OK] 屏幕：2800x1272（rotation=1）
+[OK] 媒体按钮会话：tv.danmaku.bili/HeadsetControlPlayAdapter.Session/446 (userId=0)
+[OK] 媒体会话：tv.danmaku.bili（播放中，position=79.0s）
 
 自检结果：通过，可以启动主程序
 ~~~
@@ -145,6 +158,7 @@ python main.py
 | --list-devices | 列出设备后退出 |
 | --send-key 224 | 发送单个按键后退出（调试用，224 是唤醒屏幕） |
 | --test play / rewind / all | 测试一次动作后退出（**调后退手感就用它**） |
+| --calibrate | 自动标定：找播放按钮位置 + 实测滑动换算比例，写入 profiles.json（换手机 / 换 App 后跑一次） |
 | --monitor | 只打印鼠标 / 键盘事件，不连手机（排查「侧键没反应」） |
 | --dry-run | 演练模式：只打印命令，不连接手机 |
 | --device 5889912f | 指定设备（多设备时用） |
@@ -169,6 +183,9 @@ python main.py
 | play_pause_y_ratio | 0.904 | 按钮位置 y（占屏幕高度比例）；`auto`/`tap` 用 |
 | play_pause_verify_ms | 400 | 发完媒体键等多久再读状态，确认真的生效（毫秒） |
 | play_pause_tap_settle_ms | 350 | 点完按钮等多久再读状态（毫秒） |
+| play_pause_extra_keycodes | null | 主键失效后依次尝试的键码；null = [79, 126, 127]，空列表 = 不试 |
+| ui_probe | true | 是否用 uiautomator 节点找按钮（自绘控件拿不到时自动跳过） |
+| profiles_file | profiles.json | 标定档案路径；相对路径以项目根目录为准，null = 不存档 |
 
 ### 后退方式（默认滑动）
 
@@ -276,10 +293,14 @@ state=PlaybackState {state=2, position=1038633, speed=1.0, actions=823, ...}
 # 2) 失效：会话变成 null，keyevent 85 和 cmd media_session dispatch 都毫无反应
 Media button session is null
 Last MediaButtonReceiver: Restored MBR {component=...com.tencent.qqmusic...}
+
+# 3) 被抢占（新手机 Android 16 上实测）：会话指向抖音，85 发给抖音，B 站毫无反应
+Media button session is com.ss.android.ugc.aweme/FeedPlayerSession/352 (userId=0)
 ~~~
 
-第 2 种情况下，logcat 里连一行按键日志都没有——App 压根没收到。特点是「暂停一会儿 / 切了音乐 App 之后」出现，
-点一下视频画面、让 B 站重新活跃，会话就回来了，媒体键也随之恢复。
+第 2、3 种情况下，B 站的 logcat 里连一行按键日志都没有——它压根没收到。特点分别是
+「暂停一会儿 / 切了音乐 App 之后」和「刷过短视频 / 别的播放器刚响过」，点一下视频画面、让 B 站重新活跃，
+会话就回来了，媒体键也随之恢复。
 
 所以光发键盘码不可靠，程序改成**先看状态再决定**（`play_pause_mode: auto`，默认）：
 
@@ -288,18 +309,62 @@ Last MediaButtonReceiver: Restored MBR {component=...com.tencent.qqmusic...}
 | 播放中，且媒体按钮会话存在 | 直接发媒体键（最快，不校验） |
 | 读不到媒体会话（前台不是播放器） | 只发媒体键，**绝不盲点屏幕**（避免误触） |
 | 媒体按钮会话是 null | 直接点击画面左下角的播放 / 暂停按钮 |
+| 媒体按钮会话属于**别的 App**（抖音、QQ 音乐…） | **一个键都不发**（发了只会打断别人），直接点按钮 |
 | 暂停中但会话还在 | 发媒体键 -> 等 `play_pause_verify_ms` -> 重读状态，没变才点按钮 |
 
 点击兜底每轮最多点 2 次（控件栏 3 秒无操作会自动隐藏，第一下只负责把控件栏唤出来，第二下才真正切换），
-每次都重读 `PlaybackState` 确认成功；两次都没成功就打印警告，提示调 `play_pause_x_ratio` / `play_pause_y_ratio`。
+每次都重读 `PlaybackState` 确认成功；两次都没成功就打印警告，提示运行 `--calibrate`。
+
+「发媒体键」不是只发一个码，而是一个**按键阶梯**：上次成功的键 -> `play_pause_keycode`（默认 85）
+-> `play_pause_extra_keycodes`（默认 79 / 126 / 127）。每发一个都读状态校验，第一个真正让状态翻转的键
+会被记住（同一进程内优先用它）。这样换成只认 `KEYCODE_HEADSETHOOK` 或 `MEDIA_PLAY` / `MEDIA_PAUSE` 的播放器也能用。
 
 ### 按钮坐标怎么来的
 
-物理分辨率 1080x2340、横屏（rotation=1）时可用区域是 2340x1080，B 站全屏播放器左下角播放 / 暂停按钮
-中心在 (92, 976)，换算成比例就是 x=0.039、y=0.904。程序按**当前屏幕尺寸 × 比例**换算，转屏 / 换设备不用改配置。
+config.json 里的默认值（0.039 / 0.904）是旧手机（vivo V1936AL，横屏 2340x1080）量的：按钮中心 (92, 976)。
+新手机（vivo PLR110，横屏 2800x1272）上按钮跑到了 (84, 1107) = 0.030 / 0.870 —— 由 `--calibrate` 量出来写进档案。
+**换设备别信默认值，先跑一次 `--calibrate`。** 程序按**当前屏幕尺寸 × 比例**换算，转屏不用改配置。
 
-这个按钮是自绘 SurfaceView，`uiautomator dump` 里没有任何节点可定位，所以只能用比例坐标。
-如果你的 App 按钮位置不同，`--test play --verbose` 看着日志微调这两个比例即可。
+但这是「一台手机 + 一个 App」量出来的值，换设备就不准了，所以点击候选点有三层：
+
+| 顺序 | 来源 | 说明 |
+| --- | --- | --- |
+| 1 | `profiles.json` 档案 | 按「包名 + 分辨率 + 方向」记住上次点准的位置（运行中自动学习，`--calibrate` 也会写） |
+| 2 | `config.json` 比例 | 默认的 0.039 / 0.904，兜底用 |
+| 3 | uiautomator 节点 | 标准控件的播放器能直接拿到按钮真实中心；B 站是自绘 SurfaceView，拿不到就自动跳过 |
+
+点了确实生效的位置会被写回档案，下次直接用；点不动就会提示跑 `--calibrate`。
+
+### 换手机 / 换 App：跑一次 `--calibrate`
+
+~~~bat
+python main.py --calibrate
+~~~
+
+程序会（手机请停在视频全屏播放页面）：
+
+1. 先试 uiautomator 节点，拿不到就在「底部左下角」一小片区域逐点点一下，用播放状态是否翻转判断哪个位置是按钮；
+2. 横滑一段固定距离，读实际后退了多少秒，算出 `ms/px`；
+3. 把结果按「包名 + 分辨率 + 方向」写进 `profiles.json`，并把视频恢复成播放状态；
+4. 打印绝对坐标、来源（ui_node / grid）和换算比例。
+
+新手机上的实测输出（网格从 3% 扫到 16%、从 85% 扫到 93%，最多 32 个点）：
+
+~~~text
+界面节点里没有播放/暂停按钮（自绘控件），改用网格搜索
+开始网格搜索按钮位置（最多 32 个点）
+点击 (84, 1081) 没有改变状态（state=2）
+命中按钮：(84, 1107) = (0.030, 0.870)
+滑动 700 像素测量后退比例……
+实测：700 像素 -> 后退 19.5 秒（27.89 ms/px），后退 5 秒约需 179 像素
+[OK] 播放/暂停按钮：绝对坐标 (84, 1107)，来源=grid
+[OK] 后退换算：27.89 ms/px（后退 5 秒约滑 179 像素）
+~~~
+
+网格不再往下扫（`y > 0.93`）：那一片是进度条和章节条，点上去会触发 seek
+——实测在 B 站的章节条上点两下会直接跳章节。
+
+换台手机、换视频平台，跑这一条命令就行，不用手改比例坐标。
 
 ### 三种模式怎么选
 
@@ -458,7 +523,9 @@ findstr /C:"自动重启" /C:"心跳" logs\controller.log
 1. `python main.py --doctor`，注意这一行：
    - `[OK] 媒体按钮会话：tv.danmaku.bili/...` -> 媒体键通路正常，问题多半在映射或防抖；
    - `[--] 媒体按钮会话：null` -> 此刻按媒体键没人接收。程序会自动改用点击按钮（`play_pause_mode: auto`），
-     也可以用 `--test play --verbose` 直接验证点击是否生效。
+     也可以用 `--test play --verbose` 直接验证点击是否生效；
+   - `媒体按钮会话：com.ss.android.ugc.aweme/...`（别的 App）-> 85 会发给抖音，程序检测到这一点会直接点按钮，
+     日志里写「媒体按钮会话被 ... 占着，改为点击画面按钮」。想让媒体键恢复，点一下 B 站播放器即可。
 2. `python main.py --test play --verbose`，看日志：
    - 「点击播放/暂停按钮 (91, 976) 第 1 次」后状态没变 -> 控件栏当时是隐藏的，程序会再点一次，属正常；
    - 两次都没成功 -> 按钮坐标不对，按视频画面微调 `play_pause_x_ratio` / `play_pause_y_ratio`：
@@ -491,11 +558,13 @@ keyevent 89 无效、日志轮转失败等）、扩展指南、收尾检查清�
 python -m unittest discover -s tests -v
 ~~~
 
-60 个用例，覆盖：设备列表解析、配置校验（含滑动参数、播放/暂停模式与比例、组合键）、防抖、动作分发、
-媒体会话解析与「两次快照间的 seek 计算」（暂停 / 播放两种情形）、媒体按钮会话解析、
-播放/暂停的四种分支（播放中只按键、会话 null 时直接点、暂停有会话时按键后校验再兜底、控件栏隐藏时点两次）、
-点击失败时的报错、三种模式的选择、滑动后退的目标秒数与自动校准、
-补刀方向、转屏后宽高交换、键盘备用绑定、看门狗重启、日志配置、退出键组合判定（单按 Esc 不再退出）、Scrcpy 占位。
+83 个用例，覆盖：设备列表解析、配置校验（含滑动参数、播放/暂停模式与比例、组合键）、防抖、动作分发、
+媒体会话解析（老格式 `state=2` 与 Android 14+ 的 `state=PAUSED(2)`）与「两次快照间的 seek 计算」（暂停 / 播放两种情形）、
+媒体按钮会话解析（含「会话属于别的 App 时只点击、不发键」）、
+播放/暂停的分支（播放中只按键、会话 null 时直接点、暂停有会话时按键后校验再兜底、按键阶梯逐个试、控件栏隐藏时点两次）、
+点击失败时的报错、三种模式的选择、标定档案读写与「档案点优先于 config 比例」、无障碍节点解析与评分、
+滑动后退的目标秒数与自动校准、标定流程（网格命中 / 节点命中 / 写档案）、补刀方向、转屏后宽高交换、
+键盘备用绑定、看门狗重启、日志配置、退出键组合判定（单按 Esc 不再退出）、Scrcpy 占位。
 
 ## 已知限制
 
@@ -504,6 +573,12 @@ python -m unittest discover -s tests -v
 - `input swipe` 是模拟手指，若 App 在滑动区域有自己的手势（例如弹幕手势、双击点赞），可能被误判；
   可通过 `swipe_y_ratio` / `swipe_start_ratio` 挪开
 - 不同时长视频的「像素 -> 秒」比例不同，靠自动校准收敛，第一个视频可能需要滑一两次
-- 播放 / 暂停的点击兜底用固定比例坐标（横屏全屏标定），换 App 或竖屏播放时需要调 `play_pause_x_ratio` /
-  `play_pause_y_ratio`；按钮是自绘控件，无法用无障碍节点自动定位
+- 点击兜底的默认比例坐标是按「横屏全屏 + B 站」量的；换 App / 竖屏播放请先跑 `--calibrate`（它会自动写
+  `profiles.json`），实在不行再手调 `play_pause_x_ratio` / `play_pause_y_ratio`
+- 标定按「包名 + 分辨率 + 方向」隔离，同一 App 换视频不用重标；但手机改分辨率 / 缩放后需要重跑一次
+- 自绘控件（如 B 站全屏播放器）拿不到无障碍节点，标定只能靠网格点击，理论上有极小概率点到别的控件（范围限制在左下角）
+- 媒体按钮会话可能被别的 App（抖音、QQ 音乐）占着，程序会自动改成点按钮，代价是慢一点（多一次读状态 + 点击）；
+  想让媒体键一直好用，先点一下播放器让 B 站成为当前媒体会话
+- 已在 Android 11（旧机）与 Android 16（新机）上验证；Android 14+ 的 `PlaybackState` 新格式
+  （`state=PLAYING(3)`）与 Android 16 去掉 `SurfaceOrientation` 都已适配，更老的系统未测
 - 只在 Windows 上验证过；macOS / Linux 需要自行配置 adb_path，pynput 权限另需授权

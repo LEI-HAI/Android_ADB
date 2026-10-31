@@ -5,7 +5,8 @@
 - 项目：用电脑鼠标侧键（经 ADB）控制手机上正在播放的视频
 - 路径：`E:\Server\Android_ADB`（仓库根目录 = 此目录）
 - 版本：`android_adb.__version__ = "1.0.0"`
-- 状态：可用。60 个单元测试通过，已在真机（vivo V1936AL）上验证播放/暂停与后退
+- 状态：可用。83 个单元测试通过，已在两台真机（新：vivo PLR110 / Android 16；旧：vivo V1936AL / Android 11）上验证播放/暂停与后退；
+  换设备/换 App 用 `--calibrate` 自动适配
 
 ---
 
@@ -27,8 +28,10 @@
 | pynput | 已安装（没有 `__version__` 属性，别用它判断版本） |
 | adbutils | **未安装**，项目用标准库 `subprocess` 调 adb，不引入第三方依赖 |
 | adb | 不在 PATH。自动探测选中：`C:\Users\LEIHAI\AppData\Roaming\AndroidAdCleaner\platform-tools\adb.exe`（1.0.41） |
-| 手机 | vivo V1936AL，serial `5889912f`，Android 11（SDK 30），物理 1080x2340 |
-| 目标 App | B 站 `tv.danmaku.bili`，全屏播放器，横屏可用区域 2340x1080 |
+| 手机（现用） | vivo PLR110，serial `3B661W00NQY00000`，Android 16（SDK 36），物理 1272x2800，density 560 |
+| 手机（旧，仅参考） | vivo V1936AL，serial `5889912f`，Android 11（SDK 30），物理 1080x2340 |
+| 目标 App | B 站 `tv.danmaku.bili`，全屏播放器；新机横屏可用区域 2800x1272，旧机 2340x1080 |
+| 截图 | **必须** `cmd /c ""adb" -s <serial> exec-out screencap -p > shot.png"`，PowerShell 的 `>` 重定向和管道会把 PNG 弄坏 |
 
 代码里的 `find_adb()` 会依次找：`ADB_PATH` 环境变量 -> `config.adb_path` -> `shutil.which` -> 常见安装目录 ->
 扫描 `%APPDATA%\*\platform-tools\adb.exe` 与 `C:\Program Files\*\adb.exe`。新机器上先跑 `--doctor` 确认。
@@ -44,8 +47,9 @@ pynput 全局钩子
              └─ ActionDispatcher (Queue(maxsize=16) + 单个 worker 线程，串行执行)
                   └─ MediaController.handle(Action)      <- 所有异常在这里吞掉
                        └─ AdbMediaBackend
-                            ├─ PlayPauser  (play_pause.py)  -> 媒体键 / 点击按钮 / 自动兜底
-                            └─ Rewinder    (rewind.py)      -> 横滑手势 / 媒体键
+                            ├─ PlayPauser  (play_pause.py)  -> 按键阶梯(85→79/126/127) / 点击按钮 / 自动兜底
+                            ├─ Rewinder    (rewind.py)      -> 横滑手势 / 媒体键，ms/px 可存档
+                            └─ ProfileStore (profiles.py)  -> profiles.json：按「包名|WxH|rN」存按钮点与 ms/px
                                  └─ AdbClient (subprocess -> adb shell input ...)
 ```
 
@@ -56,13 +60,16 @@ pynput 全局钩子
 | `android_adb/logger.py` | 中文日志格式、`_SafeRotatingFileHandler`（轮转失败原地截断） |
 | `android_adb/adb_client.py` | 找 adb、`devices()`/`pick_device()`、`shell/keyevent/tap/swipe/screen_size/rotation/media_session_dump`、异常族 |
 | `android_adb/media_state.py` | 解析 `dumpsys media_session`：`PlaybackState`、`parse_media_session`、`pick_state`、`media_button_session` |
-| `android_adb/play_pause.py` | `PlayPauser` / `KeyeventPlayPauser` / `SmartPlayPauser` / `make_play_pauser` |
-| `android_adb/rewind.py` | `Rewinder` / `KeyeventRewinder` / `SwipeRewinder`（闭环校准）/ `make_rewinder` |
+| `android_adb/play_pause.py` | `PlayPauser` / `KeyeventPlayPauser` / `SmartPlayPauser`（按键阶梯 + 三层点击候选）/ `make_play_pauser` |
+| `android_adb/rewind.py` | `Rewinder` / `KeyeventRewinder` / `SwipeRewinder`（闭环校准 + 档案优先）/ `make_rewinder` |
+| `android_adb/calibrate.py` | `Calibrator`：`--calibrate` 用（先试无障碍节点，再网格点击找按钮；实测 ms/px） |
+| `android_adb/profiles.py` | `profile_key()`、`ProfileStore`：`profiles.json` 读写（按钮比例、ms/px，原子替换） |
+| `android_adb/ui_probe.py` | `parse_dump` / `find_play_pause_node` / `find_seek_bar_node` / `UiProber`（uiautomator dump 解析） |
 | `android_adb/controller.py` | `Action` 枚举、`ACTION_LABELS`、`MediaController.handle()` |
 | `android_adb/mouse_listener.py` | `Debouncer`、`ActionDispatcher`、`MouseHook`、`KeyboardHook`、`HookSupervisor`、`InputMonitor` |
 | `android_adb/hotkeys.py` | `parse_combo`/`resolve_key`、`ExitHotkey` |
 | `android_adb/backends/` | `base.MediaBackend` 抽象；`adb_backend`（默认）、`dry_run`（演练）、`scrcpy_backend`（**未实现，构造即抛 BackendUnavailable**） |
-| `tests/test_core.py` | 60 个离线用例，不需要手机 |
+| `tests/test_core.py` | 83 个离线用例，不需要手机 |
 | `start.bat` | Windows 一键启动（**GBK 编码**，开头 `chcp 936`） |
 | `README.md` | 面向用户的说明；改行为时同步更新 |
 
@@ -95,10 +102,22 @@ B 站 MediaSession 的 `actions=823`，没有 ACTION_REWIND / FAST_FORWARD。发
 所以默认 `play_pause_mode: auto`：播放中直接发键；会话为 null 直接点按钮；暂停但有会话则发键后读状态校验，没变才点。
 点击兜底要**点两次**（控件栏 3 秒不动会自动隐藏，第一下只是唤出控件），每次点完都重读 `PlaybackState`。
 
-### 5.3 B 站播放按钮无法用无障碍节点定位
-`uiautomator dump` 里只有 38 个节点，底部控制条是自绘 SurfaceView，没有任何可点节点。
-只能用比例坐标：横屏 2340x1080 下按钮中心 `(92, 976)` -> `x_ratio=0.039, y_ratio=0.904`。
-换 App 或竖屏时要重新标定（见 §7）。
+**会话被别的 App 抢占**（新机上实测踩到）：`Media button session is com.ss.android.ugc.aweme/FeedPlayerSession/352 (userId=0)`，
+而 B 站的会话只是普通会话。此时发 85 是发给**抖音**的，B 站毫无反应（前后两者 state 都不变，logcat 里 B 站一行都没收到）。
+`SmartPlayPauser` 现在先解析会话属主（`_session_owner`，取 `/` 前的包名），属主不是当前视频的包名时**一个媒体键都不发**，
+直接走点击兜底。点活 B 站后会话会回到 `tv.danmaku.bili`，85 又能用。
+
+### 5.3 B 站播放按钮无法用无障碍节点定位 —— 所以做成了「三层候选 + 自动标定」
+`uiautomator dump` 里只有几十个节点，底部控制条是自绘 SurfaceView，没有任何可点节点。
+config 里的默认比例坐标是旧机横屏 2340x1080 下量的 `(92, 976)` -> `x_ratio=0.039, y_ratio=0.904`；
+新机 2800x1272 上实测按钮在 `(84, 1107)` = `0.030 / 0.870`（由 `--calibrate` 写进 profiles.json）。
+**新设备上别信 config 默认值，先跑 `--calibrate`。**
+
+点击候选顺序（`SmartPlayPauser._tap_candidates`）：`profiles.json` 档案点 -> config 比例点 -> uiautomator 节点点，
+按 8px 去重；点中并让状态翻转就写回档案（下次直接用）。换 App / 换手机跑 `python main.py --calibrate`（见 §7）。
+
+**评分坑**：`ui_probe.score_play_pause_node` 里，「包含关键词」必须先满足 `looks_like_control`
+（clickable 或 class 含 button/image），否则 B 站文案「播放列表里没有更多视频了哦哦哦」这种 TextView 会被误判成按钮。
 
 ### 5.4 faulthandler 长期占用日志文件，导致轮转失败刷屏
 旧代码 `_install_crash_handlers` 用 `open(log_path, "a")` 把 faulthandler 挂在 `controller.log` 上，
@@ -127,6 +146,21 @@ B 站 MediaSession 的 `actions=823`，没有 ACTION_REWIND / FAST_FORWARD。发
 ### 5.9 `pynput` 在部分环境下读不到版本
 `import pynput; pynput.__version__` 会 AttributeError，`--doctor` 只判断"能否 import"。
 
+### 5.10 Android 14+ 的 `PlaybackState` 改成了「状态名(数字)」格式
+Android 11 写 `state=PlaybackState {state=2, position=...}`，Android 14/16 写
+`state=PlaybackState {state=PAUSED(2), position=127883, ..., custom actions=[...]}`。
+旧正则 `\bstate=(-?\d+)` 匹配不到，`PlaybackState.state` 恒为 0 -> 被当成"未知状态" ->
+永远只发媒体键、不点按钮、后退也测不出位移（`advance_between` 拿不到 position 就跳过校准）。
+现在 `media_state._parse_state_value()` 先试 `\{state=([A-Z_]+)\((-?\d+)\)`，再退回纯数字。
+`state` 的正则**只在 `_STATE_VALUE_RES` 里**，别再往 `_FIELD_RES` 里加回去（否则会抢匹配）。
+
+### 5.11 Android 16 的 `dumpsys input` 没有 `SurfaceOrientation`
+旧 `rotation()` 只匹配 `SurfaceOrientation:\s*(\d)`，在 Android 16 上恒返回 0 ->
+`display_size()` 把 2800x1272 当成 1272x2800，点击坐标全错（表现为"点了没反应"或点到别处）。
+现在依次试：`SurfaceOrientation` -> `Viewport ... orientation=(\d)`（Android 14+ 有
+`Viewport INTERNAL: ..., orientation=1, logicalFrame=[0, 0, 2800, 1272]`）-> `dumpsys display` 的
+`mCurrentOrientation=(\d)`。新代码判断横竖屏请复用 `rotation()`/`display_size()`，别自己再解析一遍。
+
 ---
 
 ## 6. 常用命令（全部实测可用）
@@ -135,7 +169,7 @@ B 站 MediaSession 的 `actions=823`，没有 ACTION_REWIND / FAST_FORWARD。发
 cd /d E:\Server\Android_ADB
 
 python -m compileall -q .                       :: 语法检查
-python -m unittest discover -s tests -v         :: 60 个用例，不需要手机
+python -m unittest discover -s tests -v         :: 83 个用例，不需要手机
 python main.py --doctor                         :: 环境自检（设备/屏幕/媒体会话/媒体按钮会话）
 python main.py --test play --verbose            :: 真机验证一次播放/暂停
 python main.py --test rewind --verbose          :: 真机验证一次后退 5 秒
@@ -144,6 +178,7 @@ python main.py --duration 4                     :: 真机监听冒烟（4 秒后
 python main.py --monitor                        :: 只打印鼠标/键盘事件，排查"侧键没反应"
 python main.py --list-devices                   :: 列设备
 python main.py --send-key 85                    :: 直发一个按键
+python main.py --calibrate                      :: 自动标定按钮位置 + 滑动比例（换手机/换 App 后跑）
 ```
 
 - 退出码：`0` 正常 / `1` 配置或参数 / `2` 设备问题 / `3` adb 或后端 / `4` 钩子反复重启失败 / `5` 未预期异常
@@ -152,6 +187,33 @@ python main.py --send-key 85                    :: 直发一个按键
 ---
 
 ## 7. 标定坐标（换 App / 竖屏时）
+
+### 7.1 首选：一条命令自动标定
+
+```bat
+python main.py --calibrate
+```
+
+手机停在视频全屏播放页面。它会：先试 uiautomator 节点，拿不到就在左下角网格（`GRID_X` x `GRID_Y`，8x4 = 最多 32 点）逐点点一下，
+用 `PlaybackState.state` 是否翻转判断按钮位置；成功后 `_ensure_playing()` 恢复播放；再横滑 `width*0.25` 像素、
+读实际后退秒数算出 `ms/px`；结果写 `profiles.json`（key = `包名|宽x高|r方向`）。
+
+网格是 `GRID_X = (0.030, 0.040, 0.050, 0.060, 0.075, 0.095, 0.120, 0.160)`、
+`GRID_Y = (0.850, 0.870, 0.890, 0.910)`；**y 不要再往下扩**，下面就是进度条/章节条，
+实测在 B 站章节条上点两下会直接跳章节。新机实测输出：
+
+```text
+界面节点里没有播放/暂停按钮（自绘控件），改用网格搜索
+开始网格搜索按钮位置（最多 32 个点）
+点击 (84, 1081) 没有改变状态（state=2）
+命中按钮：(84, 1107) = (0.030, 0.870)
+滑动 700 像素测量后退比例……
+实测：700 像素 -> 后退 19.5 秒（27.89 ms/px），后退 5 秒约需 179 像素
+[OK] 播放/暂停按钮：绝对坐标 (84, 1107)，来源=grid
+[OK] 后退换算：27.89 ms/px（后退 5 秒约滑 179 像素）
+```
+
+### 7.2 兜底：手动量
 
 ```bat
 adb exec-out screencap -p > shot.png
@@ -176,6 +238,8 @@ play_pause_y_ratio = py / height
   因此 `SmartPlayPauser` 必须把"读状态失败"降级为"只发媒体键"，否则这个测试会挂（这条约束是有意的）。
 - `FakePlayPauseClient` 的 `session` 参数：默认是"有会话"的字符串，**显式传 `None` 才是"媒体按钮会话为 null"**。
   曾经用 None 当默认值，导致"有会话"的用例全走成 null 分支。
+- 播/停状态字符串两种格式都要有用例：`state=2`（老）与 `state=PAUSED(2)`（Android 14+）。
+  会话属主是别的包名（如 `com.ss.android.ugc.aweme/...`）时必须"不发键、只点击"。
 - 真实设备会动！`--test play` 会真的暂停/播放你的视频，`--test rewind` 会真的 seek。测试完把视频恢复成播放状态。
 - 禁止把真机序列号、绝对路径写进断言。
 
@@ -203,6 +267,9 @@ play_pause_y_ratio = py / height
 | `play_pause_x_ratio`, `play_pause_y_ratio` | 0.039 / 0.904 | 播放按钮比例坐标 |
 | `play_pause_verify_ms` | 400 | 发键后等多久再读状态（实测 200~400ms 足够翻转） |
 | `play_pause_tap_settle_ms` | 350 | 点完等多久再读状态 |
+| `play_pause_extra_keycodes` | null | 主键无效后依次试的键码；null = [79, 126, 127]，空 = 不试 |
+| `ui_probe` | true | 是否用 uiautomator 节点找按钮（自绘控件拿不到就跳过） |
+| `profiles_file` | `profiles.json` | 标定档案路径；相对 BASE_DIR，null = 不存档（已 gitignore） |
 | `rewind_mode` | `swipe` | `swipe` 手势 / `media_key` 老方案（对 B 站无效） |
 | `swipe_seconds` | 5.0 | 每次后退目标秒数 |
 | `swipe_ms_per_px` | 31.0 | 初始换算，会被自动校准覆盖 |
@@ -218,11 +285,14 @@ play_pause_y_ratio = py / height
 ## 11. 已知限制 / 待办
 
 - `scrcpy_backend` 只是占位，选它会立刻报"尚未实现"
-- 点击兜底依赖固定比例坐标，竖屏或换 App 需重新标定；按钮是自绘控件，无法自动定位
+- 自绘控件（B 站全屏播放器）只能靠 `--calibrate` 的网格点击定位，理论上可能点到别的控件（范围限制在左下角）
+- 标定按「包名 + 分辨率 + 方向」隔离；手机改分辨率/缩放后要重跑 `--calibrate`
 - 后退精度依赖 `dumpsys media_session` 的 position（部分 App 只在状态变化时才上报，`rewind.py` 已做两次快照补偿）
 - `input swipe` 是模拟手指，若滑动区域有 App 自己的手势（弹幕、双击点赞）会误判，用 `swipe_y_ratio` / `swipe_start_ratio` 挪开
 - 只在 Windows + 这台安卓机上验证过；macOS/Linux 需自行配 `adb_path`，pynput 权限另需授权
 - 多设备时用 `--device` 或 `config.device_serial`（同机装了 MuMu 模拟器时尤其注意）
+- 媒体按钮会话可能被别的 App（抖音、QQ 音乐）占着，程序会自动改点击，但**代价是慢一点**；
+  想让 85 一直好用，先让 B 站成为当前媒体会话（点一下播放器即可）
 
 ---
 
@@ -231,8 +301,8 @@ play_pause_y_ratio = py / height
 改完代码，按顺序过一遍：
 
 1. `python -m compileall -q .`
-2. `python -m unittest discover -s tests -v`（必须 60 passed，新增行为要补用例）
-3. `python main.py --doctor`（看"媒体按钮会话"和"播放/暂停方式"两行）
+2. `python -m unittest discover -s tests -v`（必须 83 passed，新增行为要补用例）
+3. `python main.py --doctor`（看"媒体按钮会话"+"标定档案"两行）
 4. `python main.py --test play --verbose`（真机；结束把视频恢复成播放）
 5. 行为变了就同步 `README.md`（用户文档）和本文件（Agent 文档）
 6. 删掉临时产物：`.screen*.png`、`config.tap.json`、`logs/*.bak`、`%SystemDrive%`（见 §5.8）

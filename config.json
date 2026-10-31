@@ -10,6 +10,9 @@
   "play_pause_y_ratio": 0.904,
   "play_pause_verify_ms": 400,
   "play_pause_tap_settle_ms": 350,
+  "play_pause_extra_keycodes": null,
+  "ui_probe": true,
+  "profiles_file": "profiles.json",
 
   "rewind_mode": "swipe",
   "swipe_seconds": 5.0,
