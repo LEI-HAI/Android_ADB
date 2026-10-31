@@ -1,0 +1,49 @@
+{
+  "adb_path": null,
+  "device_serial": null,
+  "adb_connect": null,
+  "adb_timeout": 8.0,
+
+  "play_pause_keycode": 85,
+  "play_pause_mode": "auto",
+  "play_pause_x_ratio": 0.039,
+  "play_pause_y_ratio": 0.904,
+  "play_pause_verify_ms": 400,
+  "play_pause_tap_settle_ms": 350,
+
+  "rewind_mode": "swipe",
+  "swipe_seconds": 5.0,
+  "swipe_ms_per_px": 31.0,
+  "swipe_start_ratio": 0.8,
+  "swipe_y_ratio": 0.55,
+  "swipe_duration_ms": 200,
+  "swipe_settle_ms": 320,
+  "auto_calibrate": true,
+
+  "rewind_keycode": 89,
+  "rewind_repeat": 1,
+  "rewind_interval_ms": 120,
+  "rewind_fallback_keycode": 21,
+  "rewind_fallback_repeat": 1,
+
+  "rewind_button": "x1",
+  "play_pause_button": "x2",
+  "debounce_ms": 350,
+
+  "rewind_key": null,
+  "play_pause_key": null,
+
+  "exit_key": "ctrl+alt+q",
+  "enable_exit_hotkey": true,
+
+  "backend": "adb",
+
+  "log_level": "INFO",
+  "log_file": "logs/controller.log",
+  "log_file_level": "DEBUG",
+  "hook_restart": true,
+  "hook_restart_limit": 30,
+  "heartbeat_seconds": 300,
+
+  "dry_run": false
+}

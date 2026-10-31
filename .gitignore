@@ -1,0 +1,34 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# ---- 运行产物 ----
+logs/
+*.log
+crash.log
+
+# ---- 临时文件 / 调试截图（用完即删，别提交）----
+/*.png
+/*.jpg
+/.screen*.png
+config.tap.json
+config.local.json
+*.bak
+*.tmp
+.cache/
+
+# ---- 编辑器 / 系统 ----
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini

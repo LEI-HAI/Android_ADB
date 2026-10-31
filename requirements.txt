@@ -1,0 +1,5 @@
+# 全局鼠标/键盘监听（必装）
+pynput>=1.7.6
+
+# 可选：用 adbutils 代替 subprocess 调 adb（本项目默认用 subprocess，无需安装）
+# adbutils>=1.2.0
