@@ -53,7 +53,7 @@ class Config:
 
     # ---------- ADB ----------
     adb_path: Optional[str] = None            # 为空则自动查找
-    device_serial: Optional[str] = None       # 多设备时指定，如 "5889912f"
+    device_serial: Optional[str] = None       # 多设备时指定，如 "ABCDEF0123456789"（--list-devices 可查）
     adb_connect: Optional[str] = None         # 无线调试地址，如 "192.168.1.10:5555"
     adb_timeout: float = 8.0                  # 单条 adb 命令超时（秒）
 

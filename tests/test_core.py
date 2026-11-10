@@ -64,12 +64,12 @@ class ParseDevicesTest(unittest.TestCase):
     def test_parse_normal_device(self) -> None:
         output = (
             "List of devices attached\n"
-            "5889912f\tdevice product:PD1936G model:V1936AL device:PD1936G transport_id:2\n"
+            "ABCDEF0123456789\tdevice product:PD1936G model:V1936AL device:PD1936G transport_id:2\n"
             "\n"
         )
         devices = AdbClient._parse_devices(output)
         self.assertEqual(len(devices), 1)
-        self.assertEqual(devices[0].serial, "5889912f")
+        self.assertEqual(devices[0].serial, "ABCDEF0123456789")
         self.assertEqual(devices[0].state, "device")
         self.assertEqual(devices[0].model, "V1936AL")
         self.assertEqual(devices[0].transport_id, "2")

@@ -525,7 +525,7 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
             "  python main.py\n"
             "  python main.py --dry-run\n"
             "  python main.py --doctor\n"
-            "  python main.py --device 5889912f\n"
+            "  python main.py --device <serial>\n"
         ),
     )
     parser.add_argument("--config", type=str, default=None, help="配置文件路径，默认使用项目下的 config.json")

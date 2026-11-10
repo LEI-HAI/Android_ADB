@@ -349,7 +349,10 @@ play_pause_y_ratio = py / height
   在无交互环境跑 git 时加 `GIT_TERMINAL_PROMPT=0`，免得卡在提示符上
 - 推送：`git push`（首次是 `git push -u origin main`）。推完用 `git ls-remote origin` 核对远端 HEAD
 
-**2026-10-31 现状（代理已关，靠换 IP 推送）**：`ProxyEnable=0`，7897/7890/10809 全都无人监听，
+**2026-11-10 现状**：代理重新打开（7897 有监听），`git push` 直接成功（`e230fd1..9abbd3a`），不用带 `curloptResolve`。
+仓库已设为**公开**，加了 topics（adb / android / python / pynput / media-control 等）和 MIT LICENSE。
+
+**2026-10-31 的历史情况（代理已关，靠换 IP 推送）**：`ProxyEnable=0`，7897/7890/10809 全都无人监听，
 仓库里写死的 `http.proxy=http://127.0.0.1:7897` 会让 `git push` 直接报
 `Failed to connect to github.com:443 over proxy 127.0.0.1 after 1 ms`。此时：
 
