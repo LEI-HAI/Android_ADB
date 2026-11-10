@@ -30,14 +30,16 @@
 ## 安装与启动
 
 ```bat
-git clone https://github.com/LEI-HAI/Android_ADB.git
-cd Android_ADB
+git clone https://github.com/LEI-HAI/Phone-Tutorial-Remote.git
+cd Phone-Tutorial-Remote
 pip install -r requirements.txt
 python main.py --doctor
 python main.py
 ```
 
 首次连接手机时，请在手机上确认 USB 调试授权。运行 `python main.py --doctor` 确认设备状态正常后，再启动监听。
+
+> 仓库原名 `Android_ADB`，2026-11 改名为 `Phone-Tutorial-Remote`（名字更直白：给“看教程视频”用的远程控制）。旧地址 `github.com/LEI-HAI/Android_ADB` 会由 GitHub 自动重定向，clone / issue 链接都仍然可用。
 
 按 `Ctrl+Alt+Q` 或 `Ctrl+C` 退出。也可以在 Windows 上双击 `start.bat` 启动。
 

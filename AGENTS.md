@@ -338,7 +338,9 @@ play_pause_y_ratio = py / height
 
 ### 13.1 远端与网络（本机特有，别踩）
 
-- 远端：`origin` = `https://github.com/LEI-HAI/Android_ADB.git`，`main` 已跟踪 `origin/main`
+- 远端：`origin` = `https://github.com/LEI-HAI/Phone-Tutorial-Remote.git`，`main` 已跟踪 `origin/main`
+  （2026-11 由 `Android_ADB` 改名；GitHub 对旧地址做 301 重定向，但本地 `origin` 已改成新地址）
+- **本地文件夹仍叫 `Android_ADB`**：改名会影响既有工作区/脚本路径，暂缓；只改了 GitHub 仓库名
 - **本机直连 GitHub 不通**：`curl https://github.com` 与 `ssh -T git@github.com` 都是超时（20 秒 0 字节）。
   必须先过一个本地代理，系统代理是 `127.0.0.1:7897`（Clash 类工具；注册表 `ProxyEnable=1` 可查）
 - 本仓库已写死 `http.proxy=http://127.0.0.1:7897`。代理软件换端口时：
