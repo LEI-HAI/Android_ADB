@@ -318,7 +318,10 @@ play_pause_y_ratio = py / height
 - 仓库就在项目根目录：`<仓库根目录>\.git`，主分支 `main`，已含初始提交
 - **git 不在系统 PATH**，完整路径 `E:\elsedownload\Git\cmd\git.exe`（2.56.0）。
   要么用全路径调用，要么把 `E:\elsedownload\Git\cmd` 加进 PATH 后重开终端
-- 本仓库已配置本地身份 `<你的名字> <you@example.com>`（只影响这个仓库，不是全局）。要换成自己的：
+- 本仓库已配置本地身份 `LEI-HAI <135983136+LEI-HAI@users.noreply.github.com>`（只影响这个仓库，不是全局）。
+  **必须用这种带数字 ID 的 noreply 地址**：早期用了 `leihai@users.noreply.github.com`，结果 GitHub 把它归到了
+  另一个同名账号 `leihai`（id 22636912，2016 年注册的空账号），提交在仓库里显示成那个账号的头像、也不进本账号的贡献图。
+  形如 `用户名@users.noreply.github.com` 的旧格式只在该用户名正好属于自己时才安全，一律改用 `ID+用户名@users.noreply.github.com`。要换成自己的：
 
   ~~~bat
   "E:\elsedownload\Git\cmd\git.exe" config user.email "you@example.com"
