@@ -2,8 +2,11 @@
 
 给接手这个项目的 Agent 的速查手册。**先读这一页，再动代码。**
 
+> 这份文档面向 AI 编码助手和贡献者，写得比较「内部」；普通用户请直接看 [README.md](README.md)。
+> 本机专属的路径、序列号等已做脱敏（写成 `<仓库根目录>`、`<serial>`），换台机器照样能照着做。
+
 - 项目：用电脑鼠标侧键（经 ADB）控制手机上正在播放的视频
-- 路径：`E:\Server\Android_ADB`（仓库根目录 = 此目录）
+- 路径：`<仓库根目录>`（仓库根目录 = 此目录）
 - 版本：`android_adb.__version__ = "1.0.0"`
 - 状态：可用。83 个单元测试通过，已在两台真机（新：vivo PLR110 / Android 16；旧：vivo V1936AL / Android 11）上验证播放/暂停与后退；
   换设备/换 App 用 `--calibrate` 自动适配
@@ -24,12 +27,12 @@
 | 项 | 值 |
 | --- | --- |
 | 系统 | Windows 11 |
-| Python | 3.13.5，`C:\Users\LEIHAI\AppData\Local\Programs\Python\Python313\python.exe` |
+| Python | 3.13.5，`%LOCALAPPDATA%\Programs\Python\Python313\python.exe` |
 | pynput | 已安装（没有 `__version__` 属性，别用它判断版本） |
 | adbutils | **未安装**，项目用标准库 `subprocess` 调 adb，不引入第三方依赖 |
-| adb | 不在 PATH。自动探测选中：`C:\Users\LEIHAI\AppData\Roaming\AndroidAdCleaner\platform-tools\adb.exe`（1.0.41） |
-| 手机（现用） | vivo PLR110，serial `3B661W00NQY00000`，Android 16（SDK 36），物理 1272x2800，density 560 |
-| 手机（旧，仅参考） | vivo V1936AL，serial `5889912f`，Android 11（SDK 30），物理 1080x2340 |
+| adb | 不在 PATH。自动探测选中：`%APPDATA%\AndroidAdCleaner\platform-tools\adb.exe`（1.0.41） |
+| 手机（现用） | vivo PLR110，serial `<serial>`，Android 16（SDK 36），物理 1272x2800，density 560 |
+| 手机（旧，仅参考） | vivo V1936AL，serial `<serial>`，Android 11（SDK 30），物理 1080x2340 |
 | 目标 App | B 站 `tv.danmaku.bili`，全屏播放器；新机横屏可用区域 2800x1272，旧机 2340x1080 |
 | 截图 | **必须** `cmd /c ""adb" -s <serial> exec-out screencap -p > shot.png"`，PowerShell 的 `>` 重定向和管道会把 PNG 弄坏 |
 
@@ -134,7 +137,7 @@ config 里的默认比例坐标是旧机横屏 2340x1080 下量的 `(92, 976)` -
 `TypeError: AdbClient.run_text() got an unexpected keyword argument 'timeout'`。现在已补上，别把参数又丢了。
 
 ### 5.7 本机 DSH 沙箱曾经坏过（环境问题，不是项目问题）
-早期所有文件/shell 工具启动 worker 都报 `SetNamedSecurityInfoW failed (Win32 5): grantWrite(E:\Server\Android_ADB)`，
+早期所有文件/shell 工具启动 worker 都报 `SetNamedSecurityInfoW failed (Win32 5): grantWrite(<仓库根目录>)`，
 只能改用 `run_code` 里 Node 的 `fs` + `child_process.spawnSync` 干活。后来策略改成 danger-full-access 才恢复。
 如果又遇到同样的报错，先用 `pwsh` 试一条只读命令确认，再决定是否走 Node 绕行。
 
@@ -166,7 +169,7 @@ Android 11 写 `state=PlaybackState {state=2, position=...}`，Android 14/16 写
 ## 6. 常用命令（全部实测可用）
 
 ```bat
-cd /d E:\Server\Android_ADB
+cd /d <仓库根目录>
 
 python -m compileall -q .                       :: 语法检查
 python -m unittest discover -s tests -v         :: 83 个用例，不需要手机
@@ -312,10 +315,10 @@ play_pause_y_ratio = py / height
 
 ## 13. 版本管理（git）
 
-- 仓库就在项目根目录：`E:\Server\Android_ADB\.git`，主分支 `main`，已含初始提交
+- 仓库就在项目根目录：`<仓库根目录>\.git`，主分支 `main`，已含初始提交
 - **git 不在系统 PATH**，完整路径 `E:\elsedownload\Git\cmd\git.exe`（2.56.0）。
   要么用全路径调用，要么把 `E:\elsedownload\Git\cmd` 加进 PATH 后重开终端
-- 本仓库已配置本地身份 `LEIHAI <leihai@local>`（只影响这个仓库，不是全局）。要换成自己的：
+- 本仓库已配置本地身份 `<你的名字> <you@example.com>`（只影响这个仓库，不是全局）。要换成自己的：
 
   ~~~bat
   "E:\elsedownload\Git\cmd\git.exe" config user.email "you@example.com"

@@ -1,17 +1,60 @@
 # Android ADB 鼠标侧键控制器
 
+[![Python](https://img.shields.io/badge/Python-3.9%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![Platform](https://img.shields.io/badge/Platform-Windows%2010%2F11-0078D4?logo=windows&logoColor=white)](#环境要求)
+[![ADB](https://img.shields.io/badge/Control-ADB%20%2B%20pynput-3DDC84?logo=android&logoColor=white)](#工作原理)
+[![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
+
 用电脑鼠标的侧键，控制手机（USB 连着电脑）上正在播放的视频：
 
 - **侧键1（后退键）-> 后退 5 秒**
 - **侧键2（前进键）-> 播放 / 暂停**
 
-不装手机端 App，只用 ADB：播放 / 暂停优先走媒体按键 `keyevent 85`（不行再自动试 79 / 126 / 127），
+一根 USB 线 + ADB 就够：**不装手机 App、不投屏、不需要 root**。
+
+实现上只用 ADB：播放 / 暂停优先走媒体按键 `keyevent 85`（不行再自动试 79 / 126 / 127），
 一旦系统当前没人接收媒体键（App 退到后台或被别的播放器抢走），自动改成点击画面上的播放 / 暂停按钮；
 后退走「横滑手势 + 读取播放位置闭环校准」，因为 B 站等客户端的 MediaSession 根本不响应 `keyevent 89`
 （实测无效，见下文「为什么不用 keyevent 89」）。
 
 **换手机、换视频 App** 不用改代码：跑一次 `python main.py --calibrate`，程序会自己找到点得动的播放按钮、
 测出滑动的换算比例，按「包名 + 分辨率 + 方向」记进 `profiles.json`，以后直接用。
+
+## 目录
+
+- [功能一览](#功能一览)
+- [工作原理](#工作原理)
+- [目录结构](#目录结构)
+- [环境要求](#环境要求)
+- [安装](#安装)
+- [三步跑起来](#三步跑起来)
+- [命令行参数](#命令行参数)
+- [配置说明（config.json）](#配置说明configjson)
+- [后退 5 秒是怎么做到的](#后退-5-秒是怎么做到的)
+- [播放 / 暂停是怎么做到的](#播放--暂停是怎么做到的)
+- [常见问题](#常见问题)
+- [预留：接入 Scrcpy（备选方案）](#预留接入-scrcpy备选方案)
+- [开发者](#开发者)
+- [已知限制](#已知限制)
+- [许可协议](#许可协议)
+
+## 30 秒上手
+
+**准备**：Windows 10/11、Python 3.9+、一根能传数据的 USB 线、手机已开「USB 调试」。
+手机不用装任何东西，电脑上也不用把 adb 装进 PATH（程序自己找）。
+
+```bat
+git clone https://github.com/LEI-HAI/Android_ADB.git
+cd Android_ADB
+pip install -r requirements.txt
+
+python main.py --doctor   :: 自检：找 adb、找手机、看媒体会话
+python main.py            :: 开始监听，然后按鼠标侧键
+```
+
+- 只想先确认键位对不对、不碰手机 -> python main.py --dry-run
+- 换了手机或换了视频 App -> 先跑一次 python main.py --calibrate（自动找播放按钮、测滑动比例）
+- 退出 -> Ctrl+Alt+Q 或 Ctrl+C
 
 ## 功能一览
 
@@ -28,6 +71,25 @@
 - Ctrl+C 或组合键 `Ctrl+Alt+Q` 安全退出（**不用 Esc**：游戏里按 Esc 开菜单会把程序一起关掉）
 - 键盘备用绑定（可选）：游戏拦鼠标钩子时，用 `ctrl+alt+left` 之类的组合键代替
 - 自带演练模式、环境自检、单键调试、输入监视器、单元测试
+
+## 工作原理
+
+```mermaid
+flowchart LR
+    A["鼠标侧键 x1 / x2"] --> B["pynput 全局钩子<br/>焦点在任何窗口都生效"]
+    B --> C["防抖 350ms<br/>x1 / x2 独立计时"]
+    C --> D["动作队列<br/>单线程串行，不丢不卡"]
+    D -->|x1| E["Rewinder<br/>后退 5 秒"]
+    D -->|x2| F["PlayPauser<br/>播放 / 暂停"]
+    E --> G["读 PlaybackState<br/>input swipe<br/>再读校验 / 补刀"]
+    F --> H["媒体键 85 / 79 / 126 / 127<br/>读状态校验<br/>不行就点画面按钮"]
+    G --> I["AdbClient<br/>subprocess + adb shell input"]
+    H --> I
+    I --> J[("USB 连接的手机")]
+```
+
+一句话：**钩子只负责把动作塞进队列，真正的 adb 调用在单独线程里串行执行**，
+所以 adb 慢（单次 50~200ms）也不会卡住鼠标监听，更不会丢动作。
 
 ## 目录结构
 
@@ -78,10 +140,14 @@ Android_ADB/
 
 ## 安装
 
+不想用 git 的话：在仓库页点 **Code -> Download ZIP**，解压到任意目录（路径里没有空格和中文最省事）。
+
 ~~~bat
-cd /d E:\Server\Android_ADB
+cd /d D:\path\to\Android_ADB
 pip install -r requirements.txt
 ~~~
+
+运行依赖只有 pynput 一个；adb 不必装进 PATH，程序会自己找（找不到时见「常见问题 2」）。
 
 ## 三步跑起来
 
@@ -98,11 +164,11 @@ python main.py --doctor
 Python：3.13.5（C:\...\python.exe）
 后退方式：swipe（目标 5 秒，31 ms/px）
 播放/暂停方式：auto（点击位置比例 0.039 / 0.904）
-标定档案：E:\Server\Android_ADB\profiles.json（1 条：tv.danmaku.bili|2800x1272|r1）
+标定档案：<仓库>\profiles.json（1 条：tv.danmaku.bili|2800x1272|r1）
 [OK] pynput 已安装
 [OK] adb：C:\Users\...\platform-tools\adb.EXE
 [OK] adb 版本：Android Debug Bridge version 1.0.41
-[OK] 设备 3B661W00NQY00000 状态=device 型号=PLR110
+[OK] 设备 <serial> 状态=device 型号=PLR110
 [OK] 屏幕：2800x1272（rotation=1）
 [OK] 媒体按钮会话：tv.danmaku.bili/HeadsetControlPlayAdapter.Session/446 (userId=0)
 [OK] 媒体会话：tv.danmaku.bili（播放中，position=79.0s）
@@ -132,7 +198,7 @@ python main.py
 
 ~~~text
 21:46:54 | 信息 | 使用 adb：C:\Users\...\platform-tools\adb.exe
-21:46:54 | 信息 | 已连接设备：5889912f (V1936AL)
+21:46:54 | 信息 | 已连接设备：<serial> (V1936AL)
 21:46:54 | 信息 | 手机屏幕 2340x1080，媒体会话：tv.danmaku.bili（播放中，102.3s）
 21:46:54 | 信息 | 鼠标监听已启动：X1 -> 后退 5 秒，X2 -> 播放/暂停
 21:46:54 | 信息 | 后端：ADB（播放/暂停 keyevent 85；后退 滑动后退（目标 5 秒，约 30.3 ms/px，自动校准））
@@ -161,7 +227,7 @@ python main.py
 | --calibrate | 自动标定：找播放按钮位置 + 实测滑动换算比例，写入 profiles.json（换手机 / 换 App 后跑一次） |
 | --monitor | 只打印鼠标 / 键盘事件，不连手机（排查「侧键没反应」） |
 | --dry-run | 演练模式：只打印命令，不连接手机 |
-| --device 5889912f | 指定设备（多设备时用） |
+| --device <serial> | 指定设备（多设备时用，--list-devices 可查） |
 | --backend adb / scrcpy | 选择后端，默认 adb |
 | --duration 10 | 监听 10 秒后自动退出（调试用） |
 | --config 路径 | 使用其它配置文件 |
@@ -393,7 +459,7 @@ python main.py --test play --verbose
 如果还是闪退，在 cmd 里手动执行一次看报错：
 
 ~~~bat
-cd /d E:\Server\Android_ADB
+cd /d D:\path\to\Android_ADB
 start.bat
 ~~~
 
@@ -550,7 +616,11 @@ findstr /C:"自动重启" /C:"心跳" logs\controller.log
 ## 开发者
 
 接手 / 二次开发前先看 [AGENTS.md](AGENTS.md)：环境事实、分层、设计不变量、踩过的坑（媒体键失联、
-keyevent 89 无效、日志轮转失败等）、扩展指南、收尾检查清单都在里面。
+keyevent 89 无效、日志轮转失败等）、扩展指南、收尾检查清单都在里面。这份文档是写给 AI 编码助手和贡献者的，
+普通用户只看本 README 就够。
+
+踩坑欢迎开 [Issue](https://github.com/LEI-HAI/Android_ADB/issues)（附上手机型号、Android 版本、视频 App、
+logs/controller.log 的最后几十行），修好了直接提 PR。
 
 运行测试：
 
@@ -582,3 +652,41 @@ python -m unittest discover -s tests -v
 - 已在 Android 11（旧机）与 Android 16（新机）上验证；Android 14+ 的 `PlaybackState` 新格式
   （`state=PLAYING(3)`）与 Android 16 去掉 `SurfaceOrientation` 都已适配，更老的系统未测
 - 只在 Windows 上验证过；macOS / Linux 需要自行配置 adb_path，pynput 权限另需授权
+
+## 许可协议
+
+[MIT](LICENSE) © 2026 LEI-HAI
+
+可以随便用来控制自己的手机、二次开发、塞进自己的工具集；出问题我不背锅（条款见 LICENSE）。
+如果能帮到你，欢迎点个 Star；也欢迎在 Issue 里说说你用的是哪台手机、哪个 App、哪个视频客户端，
+方便把兼容性情况写进这份文档。
+
+## English (short version)
+
+A desktop-to-Android media remote over ADB. Your mouse side buttons become **play/pause** and
+**back 5 seconds** for whatever video is playing on a USB-connected phone.
+
+- **Side button 1** -> seek back 5 s: reads the real PlaybackState, performs a horizontal swipe,
+  re-reads the position and corrects itself (closed loop). keyevent 89 is ignored by most Chinese
+  video apps, so it is deliberately not the default.
+- **Side button 2** -> play/pause: tries media keys 85 / 79 / 126 / 127, verifies the state actually
+  changed, and falls back to tapping the on-screen button when no app owns the system
+  media-button session (common after another player such as Douyin or QQ Music grabbed it).
+- Global pynput hook, 350 ms debounce (per button), single worker queue so adb latency never
+  blocks the hook and actions never run out of order.
+- python main.py --calibrate auto-locates the play button and measures swipe-to-seconds for a new
+  phone or app, stored in profiles.json keyed by package + resolution + rotation.
+- Diagnostics: --doctor, --monitor, --dry-run, --test play|rewind, --list-devices, --send-key.
+
+Quick start (Windows 10/11, USB debugging enabled, no root needed):
+
+```bat
+pip install -r requirements.txt
+python main.py --doctor
+python main.py
+```
+
+Exit with Ctrl+Alt+Q or Ctrl+C. Requires Python 3.9+ and platform-tools adb (auto-detected, does not
+need to be on PATH). Console output is Chinese; the architecture and the pitfalls are documented in
+[AGENTS.md](AGENTS.md). Verified on Android 11 and Android 16 devices with the Bilibili app.
+
